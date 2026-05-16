@@ -8,60 +8,109 @@ cron.schedule("*/1 * * * *", async () => {
 
   console.log("Monitorando sinais...");
 
-  const snapshot = await db
-    .collection("signals")
-    .where("status", "==", "RUNNING")
-    .get();
+  try {
 
-  snapshot.forEach(async (doc) => {
+    const snapshot = await db
+      .collection("signals")
+      .where("status", "==", "RUNNING")
+      .get();
 
-    const signal = doc.data();
+    snapshot.forEach(async (doc) => {
 
-    const price =
-      await getPrice(signal.pair);
+      const signal = doc.data();
 
-    console.log(signal.pair, price);
+      const price =
+        await getPrice(signal.pair);
 
-    if(signal.direction === "BUY") {
+      console.log(
+        signal.pair,
+        price
+      );
 
-      if(price >= signal.takeProfit) {
+      if(!price) return;
 
-        await doc.ref.update({
-          status: "WIN"
-        });
+      // =====================
+      // BUY
+      // =====================
+
+      if(signal.direction === "BUY") {
+
+        // TAKE PROFIT
+
+        if(price >= signal.takeProfit) {
+
+          await doc.ref.update({
+            status: "WIN",
+            closedPrice: price,
+            closedAt: new Date(),
+            accuracy: 1
+          });
+
+          console.log("WIN:", signal.pair);
+
+        }
+
+        // STOP LOSS
+
+        if(price <= signal.stopLoss) {
+
+          await doc.ref.update({
+            status: "LOSS",
+            closedPrice: price,
+            closedAt: new Date(),
+            accuracy: -1
+          });
+
+          console.log("LOSS:", signal.pair);
+
+        }
 
       }
 
-      if(price <= signal.stopLoss) {
+      // =====================
+      // SELL
+      // =====================
 
-        await doc.ref.update({
-          status: "LOSS"
-        });
+      if(signal.direction === "SELL") {
+
+        // TAKE PROFIT
+
+        if(price <= signal.takeProfit) {
+
+          await doc.ref.update({
+            status: "WIN",
+            closedPrice: price,
+            closedAt: new Date(),
+            accuracy: 1
+          });
+
+          console.log("WIN:", signal.pair);
+
+        }
+
+        // STOP LOSS
+
+        if(price >= signal.stopLoss) {
+
+          await doc.ref.update({
+            status: "LOSS",
+            closedPrice: price,
+            closedAt: new Date(),
+            accuracy: -1
+          });
+
+          console.log("LOSS:", signal.pair);
+
+        }
 
       }
 
-    }
+    });
 
-    if(signal.direction === "SELL") {
+  } catch (error) {
 
-      if(price <= signal.takeProfit) {
+    console.log(error.message);
 
-        await doc.ref.update({
-          status: "WIN"
-        });
-
-      }
-
-      if(price >= signal.stopLoss) {
-
-        await doc.ref.update({
-          status: "LOSS"
-        });
-
-      }
-
-    }
-
-  });
+  }
 
 });
