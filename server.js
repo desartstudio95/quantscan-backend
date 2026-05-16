@@ -1,132 +1,45 @@
-require("./services/monitorService");
-const express = require("express");
-const cors = require("cors");
+const db = require("../firebase");
 
-const db = require("./firebase");
+const updateAI = async () => {
 
-const getPrice = require("./services/priceService");
+  const snapshot =
+    await db.collection("signals").get();
 
-// IMPORTA O MONITOR TP/SL
-require("./services/monitorService");
+  let wins = 0;
 
-const app = express();
+  let losses = 0;
 
-app.use(cors());
-app.use(express.json());
+  snapshot.forEach((doc) => {
 
+    const signal = doc.data();
 
-// ===============================
-// TESTE BACKEND
-// ===============================
+    if(signal.status === "WIN")
+      wins++;
 
-app.get("/", (req, res) => {
+    if(signal.status === "LOSS")
+      losses++;
 
-  res.send("QuantScan Backend Online 🚀");
+  });
 
-});
+  const total = wins + losses;
 
+  const accuracy =
+    total > 0
+    ? ((wins / total) * 100)
+    : 0;
 
-// ===============================
-// PREÇO REAL FOREX
-// ===============================
+  await db
+    .collection("ai")
+    .doc("stats")
+    .set({
 
-app.get("/price/:pair", async (req, res) => {
-
-  try {
-
-    const pair = req.params.pair;
-
-    const price = await getPrice(pair);
-
-    res.json({
-      pair,
-      price
-    });
-
-  } catch (error) {
-
-    res.status(500).json({
-      error: error.message
-    });
-
-  }
-
-});
-
-
-// ===============================
-// SALVAR SINAL
-// ===============================
-
-app.post("/signal", async (req, res) => {
-
-  try {
-
-    const signal = req.body;
-
-    signal.status = "RUNNING";
-
-    signal.createdAt = new Date();
-
-    await db.collection("signals").add(signal);
-
-    res.json({
-      success: true,
-      signal
-    });
-
-  } catch (error) {
-
-    res.status(500).json({
-      error: error.message
-    });
-
-  }
-
-});
-
-
-// ===============================
-// LISTAR SINAIS
-// ===============================
-
-app.get("/signals", async (req, res) => {
-
-  try {
-
-    const snapshot =
-      await db.collection("signals").get();
-
-    const signals = [];
-
-    snapshot.forEach((doc) => {
-
-      signals.push({
-        id: doc.id,
-        ...doc.data()
-      });
+      wins,
+      losses,
+      accuracy,
+      updatedAt: new Date()
 
     });
 
-    res.json(signals);
+};
 
-  } catch (error) {
-
-    res.status(500).json({
-      error: error.message
-    });
-
-  }
-
-});
-
-
-// ===============================
-// INICIAR SERVIDOR
-// ===============================
-
-app.listen(process.env.PORT || 3000, () => {
-
-  console.log("Servidor online 🚀");
-
-});
+module.exports = updateAI;
