@@ -1,45 +1,214 @@
-const db = require("../firebase");
+const express = require("express");
+const cors = require("cors");
 
-const updateAI = async () => {
+const db = require("./firebase");
 
-  const snapshot =
-    await db.collection("signals").get();
+const getPrice = require("./services/priceService");
 
-  let wins = 0;
+// MONITOR TP/SL
+require("./services/monitorService");
 
-  let losses = 0;
+const app = express();
 
-  snapshot.forEach((doc) => {
+app.use(cors());
+app.use(express.json());
 
-    const signal = doc.data();
 
-    if(signal.status === "WIN")
-      wins++;
+// =====================================
+// TESTE BACKEND
+// =====================================
 
-    if(signal.status === "LOSS")
-      losses++;
+app.get("/", (req, res) => {
 
-  });
+  res.send("QuantScan Backend Online 🚀");
 
-  const total = wins + losses;
+});
 
-  const accuracy =
-    total > 0
-    ? ((wins / total) * 100)
-    : 0;
 
-  await db
-    .collection("ai")
-    .doc("stats")
-    .set({
+// =====================================
+// PREÇO REAL FOREX
+// =====================================
 
-      wins,
-      losses,
-      accuracy,
-      updatedAt: new Date()
+app.get("/price/:pair", async (req, res) => {
+
+  try {
+
+    const pair = req.params.pair;
+
+    const price = await getPrice(pair);
+
+    res.json({
+      pair,
+      price
+    });
+
+  } catch (error) {
+
+    res.status(500).json({
+      error: error.message
+    });
+
+  }
+
+});
+
+
+// =====================================
+// CRIAR SINAL
+// =====================================
+
+app.post("/signal", async (req, res) => {
+
+  try {
+
+    const signal = req.body;
+
+    signal.status = "RUNNING";
+
+    signal.createdAt = new Date();
+
+    await db.collection("signals").add(signal);
+
+    res.json({
+      success: true,
+      signal
+    });
+
+  } catch (error) {
+
+    res.status(500).json({
+      error: error.message
+    });
+
+  }
+
+});
+
+
+// =====================================
+// LISTAR SINAIS
+// =====================================
+
+app.get("/signals", async (req, res) => {
+
+  try {
+
+    const snapshot =
+      await db.collection("signals").get();
+
+    const signals = [];
+
+    snapshot.forEach((doc) => {
+
+      signals.push({
+        id: doc.id,
+        ...doc.data()
+      });
 
     });
 
-};
+    res.json(signals);
 
-module.exports = updateAI;
+  } catch (error) {
+
+    res.status(500).json({
+      error: error.message
+    });
+
+  }
+
+});
+
+
+// =====================================
+// ESTATÍSTICAS IA
+// =====================================
+
+app.get("/stats", async (req, res) => {
+
+  try {
+
+    const snapshot =
+      await db.collection("signals").get();
+
+    let total = 0;
+
+    let wins = 0;
+
+    let losses = 0;
+
+    let running = 0;
+
+    let accuracy = 0;
+
+    snapshot.forEach((doc) => {
+
+      const signal = doc.data();
+
+      total++;
+
+      if(signal.status === "WIN") {
+
+        wins++;
+
+        accuracy += 1;
+
+      }
+
+      if(signal.status === "LOSS") {
+
+        losses++;
+
+        accuracy -= 1;
+
+      }
+
+      if(signal.status === "RUNNING") {
+
+        running++;
+
+      }
+
+    });
+
+    const winRate =
+      total > 0
+      ? ((wins / total) * 100).toFixed(2)
+      : 0;
+
+    res.json({
+
+      totalSignals: total,
+
+      wins,
+
+      losses,
+
+      running,
+
+      winRate: `${winRate}%`,
+
+      aiAccuracy: accuracy
+
+    });
+
+  } catch (error) {
+
+    res.status(500).json({
+      error: error.message
+    });
+
+  }
+
+});
+
+
+// =====================================
+// SERVIDOR
+// =====================================
+
+app.listen(process.env.PORT || 3000, () => {
+
+  console.log("Servidor online 🚀");
+
+});
