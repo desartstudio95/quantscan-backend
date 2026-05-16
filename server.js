@@ -1,6 +1,8 @@
 const express = require("express");
 const cors = require("cors");
+
 const db = require("./firebase");
+
 const getPrice = require("./services/priceService");
 
 const app = express();
@@ -9,7 +11,9 @@ app.use(cors());
 app.use(express.json());
 
 app.get("/", (req, res) => {
+
   res.send("QuantScan Backend Online 🚀");
+
 });
 
 app.get("/price/:pair", async (req, res) => {
@@ -36,5 +40,7 @@ app.get("/price/:pair", async (req, res) => {
 });
 
 app.listen(process.env.PORT || 3000, () => {
+
   console.log("Servidor online");
+
 });
