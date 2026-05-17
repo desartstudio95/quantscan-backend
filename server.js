@@ -8,7 +8,7 @@ const genAI = new GoogleGenerativeAI(
 );
 
 const model = genAI.getGenerativeModel({
-  model: "gemini 3.1 Pro Preview"
+  model: "gemini-1.5-pro"
 });
 
 const cors = require("cors");
