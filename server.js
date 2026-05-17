@@ -218,8 +218,80 @@ app.get("/stats", async (req, res) => {
   }
 
 });
+// =====================================
+// IA ANALISAR GRÁFICO
+// =====================================
 
+app.post("/api/analyze", async (req, res) => {
 
+  try {
+
+    const { image } = req.body;
+
+    if (!image) {
+
+      return res.status(400).json({
+        error: "Imagem não enviada"
+      });
+
+    }
+
+    const prompt = `
+    Você é QuantScan AI PRO.
+
+    Analise o gráfico enviado.
+
+    Faça:
+    - tendência
+    - suporte/resistência
+    - Smart Money Concept
+    - Liquidity Sweep 
+    - momentum
+    - probabilidade
+    - score IA
+    - entrada
+    - take profit
+    - stop loss
+
+    Responda profissionalmente.
+    `;
+
+    const result =
+      await model.generateContent([
+
+        prompt,
+
+        {
+          inlineData: {
+            mimeType: "image/png",
+            data: image
+          }
+        }
+
+      ]);
+
+    const response =
+      await result.response;
+
+    const text =
+      response.text();
+
+    res.json({
+      success: true,
+      analysis: text
+    });
+
+  } catch (error) {
+
+    console.log(error);
+
+    res.status(500).json({
+      error: error.message
+    });
+
+  }
+
+});
 // =====================================
 // SERVIDOR
 // =====================================
