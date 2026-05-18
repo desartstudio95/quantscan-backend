@@ -236,7 +236,13 @@ app.post("/api/analyze", async (req, res) => {
 
     }
 
+
+    // 👇 SMC ENGINE AQUI
+const smcResult = analyzeSMC([]);
+console.log("SMC RESULT:", smcResult);
     const prompt = `
+    }
+    
     Você é QuantScan AI PRO.
 
     Analise o gráfico enviado.
@@ -277,8 +283,9 @@ app.post("/api/analyze", async (req, res) => {
       response.text();
 
     res.json({
-      success: true,
-      analysis: text
+  success: true,
+  analysis: text,
+  smc: smcResult
     });
 
   } catch (error) {
