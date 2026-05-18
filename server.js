@@ -238,48 +238,57 @@ app.post("/api/analyze", async (req, res) => {
 
     }
 
+    // =====================================
+    // CANDLES REAIS + SMC
+    // =====================================
 
-   // =====================================
-// SMC ENGINE + CANDLES REAIS
-// =====================================
+    const candles =
+      await getCandles("EUR/USD");
 
-const candles = await getCandles("EUR/USD");
+    const smcResult =
+      analyzeSMC(candles);
 
-const smcResult = analyzeSMC(candles);
+    console.log(
+      "SMC RESULT:",
+      smcResult
+    );
 
-console.log("SMC RESULT:", smcResult);
+    // =====================================
+    // PROMPT IA
+    // =====================================
 
-   // =====================================
-// PROMPT IA
-// ===================================== 
-    const prompt = 
-    
-    Você é QuantScan AI PRO institucional.
+    const prompt = `
+Você é QuantScan AI PRO institucional.
 
-    Use Smart Money Concepts reais.
+Use Smart Money Concepts reais.
 
-    Dados SMC detectados:
+Dados SMC detectados:
 
-    ${JSON.stringify(smcResult)}
+${JSON.stringify(smcResult)}
 
-    Faça:
-    - tendência
-    - BOS
-    - CHOCH
-    - suporte/resistência
-    - Smart Money Concept
-    - Liquidity Sweep 
-    - Order Blocks
-    - manipulação institucional
-    - momentum
-    - probabilidade IA
-    - score IA
-    - entrada
-    - take profit
-    - stop loss
+Analise:
 
-    Responda profissionalmente.
-    `;
+- tendência
+- BOS
+- CHOCH
+- suporte/resistência
+- Smart Money Concept
+- Liquidity Sweep
+- Order Blocks
+- manipulação institucional
+- momentum
+- probabilidade IA
+- score IA
+- entrada
+- take profit
+- stop loss
+
+Responda profissionalmente.
+`;
+
+    // =====================================
+    // GEMINI
+    // =====================================
 
     const result =
       await model.generateContent([
@@ -301,10 +310,18 @@ console.log("SMC RESULT:", smcResult);
     const text =
       response.text();
 
+    // =====================================
+    // RESPOSTA FINAL
+    // =====================================
+
     res.json({
-  success: true,
-  analysis: text,
-  smc: smcResult
+
+      success: true,
+
+      analysis: text,
+
+      smc: smcResult
+
     });
 
   } catch (error) {
