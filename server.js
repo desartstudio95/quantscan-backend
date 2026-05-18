@@ -1,5 +1,13 @@
-const { getCandles } = require("./services/marketService");
-const { analyzeSMC } = require("./services/smcEngine");
+const { getCandles } =
+require("./services/marketService");
+
+const { analyzeSMC } =
+require("./services/smcEngine");
+
+const {
+  sendNotification
+} = require("./services/notificationService");
+
 const express = require("express");
 
 const { GoogleGenerativeAI } =
