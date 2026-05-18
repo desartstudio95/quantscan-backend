@@ -1,96 +1,78 @@
-import express from "express";
-import cors from "cors";
+const { getCandles } =
+require("./services/marketService");
 
-import {
-  GoogleGenAI,
-  Type
-} from "@google/genai";
+const { analyzeSMC } =
+require("./services/smcEngine");
 
-import {
-  getCandles
-} from "./services/marketService";
-
-import {
-  analyzeSMC
-} from "./services/smcEngine";
-
-import {
+const {
   sendNotification
-} from "./services/notificationService";
+} = require("./services/notificationService");
+
+const express = require("express");
+
+const { GoogleGenerativeAI } =
+require("@google/generative-ai");
+
+const genAI = new GoogleGenerativeAI(
+  process.env.GEMINI_API_KEY 
+);
+
+console.log(
+"GEMINI KEY:",
+process.env.GEMINI_API_KEY
+);
+
+const model = genAI.getGenerativeModel({
+  model: "gemini-2.5-flash"
+});
+
+const cors = require("cors");
+
+const db = require("./firebase");
+
+const getPrice = require("./services/priceService");
+
+// MONITOR TP/SL
+require("./services/monitorService");
 
 const app = express();
 
 app.use(cors());
+app.use(express.json());
 
-app.use(
-  express.json({
-    limit: "50mb"
-  })
-);
 
-const PORT =
-  process.env.PORT || 3000;
-
-const ai = new GoogleGenAI({
-
-  apiKey:
-    process.env.GEMINI_API_KEY?.trim()
-
-});
-
-// ========================================
-// TESTE
-// ========================================
+// =====================================
+// TESTE BACKEND
+// =====================================
 
 app.get("/", (req, res) => {
 
-  res.send(
-    "QuantScan AI Backend Online 🚀"
-  );
+  res.send("QuantScan Backend Online 🚀");
 
 });
-// ========================================
-// PREÇO REAL
-// ========================================
+
+
+// =====================================
+// PREÇO REAL FOREX
+// =====================================
 
 app.get("/price/:pair", async (req, res) => {
 
   try {
 
-    const pair =
-      req.params.pair;
+    const pair = req.params.pair;
 
-    const candles =
-      await getCandles(pair);
-
-    if (!candles || !candles.length) {
-
-      return res.status(404).json({
-        error: "Preço não encontrado"
-      });
-
-    }
-
-    const last =
-      candles[candles.length - 1];
+    const price = await getPrice(pair);
 
     res.json({
-
       pair,
-
-      price: last.close,
-
-      candle: last
-
+      price
     });
 
-  } catch (error: any) {
+  } catch (error) {
 
     res.status(500).json({
-
-      error:
-        error.message
-
+      error: error.message
     });
 
   }
@@ -98,270 +80,288 @@ app.get("/price/:pair", async (req, res) => {
 });
 
 
-// ========================================
-// ANALISAR GRÁFICO
-// ========================================
+// =====================================
+// CRIAR SINAL
+// =====================================
 
-app.post(
-  "/api/analyze",
-  async (req, res) => {
+app.post("/signal", async (req, res) => {
 
-    try {
+  try {
 
-      const {
-        imageBase64
-      } = req.body;
+    const signal = req.body;
 
-      if (!imageBase64) {
+    signal.status = "RUNNING";
 
-        return res.status(400).json({
+    signal.createdAt = new Date();
 
-          error:
-            "Imagem não enviada"
+    await db.collection("signals").add(signal);
 
-        });
+    res.json({
+      success: true,
+      signal
+    });
+
+  } catch (error) {
+
+    res.status(500).json({
+      error: error.message
+    });
+
+  }
+
+});
+
+
+// =====================================
+// LISTAR SINAIS
+// =====================================
+
+app.get("/signals", async (req, res) => {
+
+  try {
+
+    const snapshot =
+      await db.collection("signals").get();
+
+    const signals = [];
+
+    snapshot.forEach((doc) => {
+
+      signals.push({
+        id: doc.id,
+        ...doc.data()
+      });
+
+    });
+
+    res.json(signals);
+
+  } catch (error) {
+
+    res.status(500).json({
+      error: error.message
+    });
+
+  }
+
+});
+
+
+// =====================================
+// ESTATÍSTICAS IA
+// =====================================
+
+app.get("/stats", async (req, res) => {
+
+  try {
+
+    const snapshot =
+      await db.collection("signals").get();
+
+    let total = 0;
+
+    let wins = 0;
+
+    let losses = 0;
+
+    let running = 0;
+
+    let accuracy = 0;
+
+    snapshot.forEach((doc) => {
+
+      const signal = doc.data();
+
+      total++;
+
+      if(signal.status === "WIN") {
+
+        wins++;
+
+        accuracy += 1;
 
       }
 
-      // ========================================
-      // CANDLES REAIS
-      // ========================================
+      if(signal.status === "LOSS") {
 
-      const candles =
-        await getCandles("EUR/USD");
+        losses++;
 
-      // ========================================
-      // SMC ENGINE
-      // ========================================
+        accuracy -= 1;
 
-      const smc =
-        analyzeSMC(candles);
+      }
 
-      console.log(
-        "SMC:",
-        smc
-      );
+      if(signal.status === "RUNNING") {
 
-      // ========================================
-      // PROMPT IA
-      // ========================================
+        running++;
 
-      const prompt = `
-Você é QuantScan AI PRO institucional.
+      }
 
-Utilize Smart Money Concepts reais.
+    });
 
-Dados detectados pelo motor SMC:
+    const winRate =
+      total > 0
+      ? ((wins / total) * 100).toFixed(2)
+      : 0;
 
-${JSON.stringify(smc)}
+    res.json({
 
-Faça análise institucional completa:
+      totalSignals: total,
 
-- tendência
-- BOS
-- CHOCH
-- liquidity sweep
-- fair value gap
-- order blocks
-- manipulação institucional
-- momentum
-- probabilidade
-- entrada
-- stop loss
-- take profit
-- score IA
+      wins,
 
-Responda em JSON profissional.
-`;
+      losses,
 
-      // ========================================
-      // GEMINI
-      // ========================================
+      running,
 
-      const response =
-        await ai.models.generateContent({
+      winRate: `${winRate}%`,
 
-          model:
-            "gemini-2.5-flash",
+      aiAccuracy: accuracy
 
-          contents: [
+    });
 
-            {
+  } catch (error) {
 
-              parts: [
+    res.status(500).json({
+      error: error.message
+    });
 
-                {
+  }
 
-                  text:
-                    prompt
+});
+// =====================================
+// IA ANALISAR GRÁFICO
+// =====================================
 
-                },
+app.post("/api/analyze", async (req, res) => {
 
-                {
+  try {
 
-                  inlineData: {
+    const { image } = req.body;
 
-                    mimeType:
-                      "image/jpeg",
+    if (!image) {
 
-                    data:
-                      imageBase64
-
-                  }
-
-                }
-
-              ]
-
-            }
-
-          ],
-
-          config: {
-
-            responseMimeType:
-              "application/json",
-
-            responseSchema: {
-
-              type:
-                Type.OBJECT,
-
-              properties: {
-
-                pair: {
-                  type:
-                    Type.STRING
-                },
-
-                trend: {
-                  type:
-                    Type.STRING
-                },
-
-                bos: {
-                  type:
-                    Type.STRING
-                },
-
-                choch: {
-                  type:
-                    Type.STRING
-                },
-
-                liquidity: {
-                  type:
-                    Type.STRING
-                },
-
-                orderBlock: {
-                  type:
-                    Type.STRING
-                },
-
-                fvg: {
-                  type:
-                    Type.STRING
-                },
-
-                decision: {
-                  type:
-                    Type.STRING
-                },
-
-                entry: {
-                  type:
-                    Type.STRING
-                },
-
-                stopLoss: {
-                  type:
-                    Type.STRING
-                },
-
-                takeProfit: {
-                  type:
-                    Type.STRING
-                },
-
-                score: {
-                  type:
-                    Type.NUMBER
-                },
-
-                analysis: {
-                  type:
-                    Type.STRING
-                }
-
-              }
-
-            }
-
-          }
-
-        });
-
-      // ========================================
-      // PARSE JSON IA
-      // ========================================
-
-      const text =
-        response.text || "{}";
-
-      const parsed =
-        JSON.parse(text);
-
-      // ========================================
-      // PUSH NOTIFICATION
-      // ========================================
-
-      await sendNotification(
-
-        `QuantScan ${parsed.decision} 🚀`,
-
-        `${parsed.pair} | Score ${parsed.score}%`
-
-      );
-
-      // ========================================
-      // RESPOSTA FINAL
-      // ========================================
-
-      res.json({
-
-        success: true,
-
-        ai: parsed,
-
-        smc
-
-      });
-
-    } catch (error: any) {
-
-      console.log(error);
-
-      res.status(500).json({
-
-        error:
-          error.message
-
+      return res.status(400).json({
+        error: "Imagem não enviada"
       });
 
     }
 
-  }
+    // =====================================
+    // CANDLES REAIS + SMC
+    // =====================================
+
+    const candles =
+  await getCandles("EUR/USD");
+
+const smcResult =
+  analyzeSMC(candles);
+
+    console.log(
+      "SMC RESULT:",
+      smcResult
+    );
+
+    // =====================================
+    // PROMPT IA
+    // =====================================
+
+    const prompt = `
+Você é QuantScan AI PRO institucional.
+
+Use Smart Money Concepts reais.
+
+Dados SMC detectados:
+
+${JSON.stringify(smcResult)}
+
+Analise:
+
+- tendência
+- BOS
+- CHOCH
+- suporte/resistência
+- Smart Money Concept
+- Liquidity Sweep
+- Order Blocks
+- manipulação institucional
+- momentum
+- probabilidade IA
+- score IA
+- entrada
+- take profit
+- stop loss
+
+Responda profissionalmente.
+`;
+
+    // =====================================
+    // GEMINI
+    // =====================================
+
+    const result =
+      await model.generateContent([
+
+        prompt,
+
+        {
+          inlineData: {
+            mimeType: "image/png",
+            data: image
+          }
+        }
+
+      ]);
+
+    const response =
+      await result.response;
+
+    const text =
+      response.text();
+
+    await sendNotification(
+  "QuantScan BUY Signal 🚀",
+
+  "EUR/USD BUY confirmado com score 87%",
+
+  {
+    pair: "EUR/USD",
+    signal: "BUY",
+    score: 87,
+    tp: "1.09500",
+    sl: "1.08900"
+
 );
+    // =====================================
+    // RESPOSTA FINAL
+    // =====================================
 
-// ========================================
-// SERVER
-// ========================================
+    res.json({
 
-app.listen(PORT, () => {
+      success: true,
 
-  console.log(
-    `Servidor online na porta ${PORT}`
-  );
+      analysis: text,
+
+      smc: smcResult
+
+    });
+
+  } catch (error) {
+
+    console.log(error);
+
+    res.status(500).json({
+      error: error.message
+    });
+
+  }
+
+});
+// =====================================
+// SERVIDOR
+// =====================================
+
+app.listen(process.env.PORT || 3000, () => {
+
+  console.log("Servidor online 🚀");
 
 });
