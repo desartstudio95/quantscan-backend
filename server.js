@@ -251,10 +251,10 @@ app.post("/api/analyze", async (req, res) => {
     // =====================================
 
     const candles =
-      await getCandles("EUR/USD");
+  await getCandles("EUR/USD");
 
-    const smcResult =
-      analyzeSMC(candles);
+const smcResult =
+  analyzeSMC(candles);
 
     console.log(
       "SMC RESULT:",
@@ -317,6 +317,11 @@ Responda profissionalmente.
 
     const text =
       response.text();
+
+    await sendNotification(
+  "QuantScan AI 🚀",
+  "Nova análise institucional gerada"
+);
 
     // =====================================
     // RESPOSTA FINAL
