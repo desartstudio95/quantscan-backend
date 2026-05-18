@@ -49,6 +49,54 @@ app.get("/", (req, res) => {
   );
 
 });
+// ========================================
+// PREÇO REAL
+// ========================================
+
+app.get("/price/:pair", async (req, res) => {
+
+  try {
+
+    const pair =
+      req.params.pair;
+
+    const candles =
+      await getCandles(pair);
+
+    if (!candles || !candles.length) {
+
+      return res.status(404).json({
+        error: "Preço não encontrado"
+      });
+
+    }
+
+    const last =
+      candles[candles.length - 1];
+
+    res.json({
+
+      pair,
+
+      price: last.close,
+
+      candle: last
+
+    });
+
+  } catch (error: any) {
+
+    res.status(500).json({
+
+      error:
+        error.message
+
+    });
+
+  }
+
+});
+
 
 // ========================================
 // ANALISAR GRÁFICO
