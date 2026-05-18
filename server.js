@@ -239,23 +239,40 @@ app.post("/api/analyze", async (req, res) => {
     }
 
 
-    // 👇 SMC ENGINE AQUI
-const smcResult = analyzeSMC([]);
-console.log("SMC RESULT:", smcResult);
-    const prompt = `
-    }
-    
-    Você é QuantScan AI PRO.
+   // =====================================
+// SMC ENGINE + CANDLES REAIS
+// =====================================
 
-    Analise o gráfico enviado.
+const candles = await getCandles("EUR/USD");
+
+const smcResult = analyzeSMC(candles);
+
+console.log("SMC RESULT:", smcResult);
+
+   // =====================================
+// PROMPT IA
+// ===================================== 
+    const prompt = 
+    
+    Você é QuantScan AI PRO institucional.
+
+    Use Smart Money Concepts reais.
+
+    Dados SMC detectados:
+
+    ${JSON.stringify(smcResult)}
 
     Faça:
     - tendência
+    - BOS
+    - CHOCH
     - suporte/resistência
     - Smart Money Concept
     - Liquidity Sweep 
+    - Order Blocks
+    - manipulação institucional
     - momentum
-    - probabilidade
+    - probabilidade IA
     - score IA
     - entrada
     - take profit
