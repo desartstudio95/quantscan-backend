@@ -1,3 +1,5 @@
+const { getCandles } = require("./services/marketService");
+const { analyzeSMC } = require("./services/smcEngine");
 const express = require("express");
 
 const { GoogleGenerativeAI } =
