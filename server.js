@@ -319,10 +319,18 @@ Responda profissionalmente.
       response.text();
 
     await sendNotification(
-  "QuantScan AI 🚀",
-  "Nova análise institucional gerada"
-);
+  "QuantScan BUY Signal 🚀",
 
+  "EUR/USD BUY confirmado com score 87%",
+
+  {
+    pair: "EUR/USD",
+    signal: "BUY",
+    score: 87,
+    tp: "1.09500",
+    sl: "1.08900"
+
+);
     // =====================================
     // RESPOSTA FINAL
     // =====================================
