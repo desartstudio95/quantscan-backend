@@ -1,45 +1,70 @@
-const { getCandles } =
-require("./services/marketService");
+const express = require("express");
+const cors = require("cors");
+const axios = require("axios");
 
-const { analyzeSMC } =
-require("./services/smcEngine");
+const {
+  GoogleGenerativeAI
+} = require("@google/generative-ai");
+
+const {
+  getCandles
+} = require("./services/marketService");
+
+const {
+  analyzeSMC
+} = require("./services/smcEngine");
 
 const {
   sendNotification
 } = require("./services/notificationService");
 
-const express = require("express");
+const getPrice =
+  require("./services/priceService");
 
-const { GoogleGenerativeAI } =
-require("@google/generative-ai");
-
-const genAI = new GoogleGenerativeAI(
-  process.env.GEMINI_API_KEY 
-);
-
-console.log(
-"GEMINI KEY:",
-process.env.GEMINI_API_KEY
-);
-
-const model = genAI.getGenerativeModel({
-  model: "gemini-2.5-flash"
-});
-
-const cors = require("cors");
-
-const db = require("./firebase");
-
-const getPrice = require("./services/priceService");
+const db =
+  require("./firebase");
 
 // MONITOR TP/SL
 require("./services/monitorService");
 
+// =====================================
+// EXPRESS
+// =====================================
+
 const app = express();
 
 app.use(cors());
-app.use(express.json());
 
+app.use(express.json({
+  limit: "50mb"
+}));
+
+const PORT =
+  process.env.PORT || 3000;
+
+// =====================================
+// GEMINI
+// =====================================
+
+const genAI =
+  new GoogleGenerativeAI(
+    process.env.GEMINI_API_KEY
+  );
+
+const model =
+  genAI.getGenerativeModel({
+
+    model:
+      "gemini-2.5-flash"
+
+  });
+
+console.log(
+  "GEMINI KEY:",
+  process.env.GEMINI_API_KEY
+    ? "OK"
+    : "MISSING"
+);
 
 // =====================================
 // TESTE BACKEND
@@ -47,116 +72,222 @@ app.use(express.json());
 
 app.get("/", (req, res) => {
 
-  res.send("QuantScan Backend Online 🚀");
+  res.send(
+    "QuantScan Backend Online 🚀"
+  );
 
 });
 
+// =====================================
+// HEALTH CHECK
+// =====================================
+
+app.get("/health", (
+  req,
+  res
+) => {
+
+  res.json({
+
+    success: true,
+
+    status: "ONLINE",
+
+    gemini:
+      process.env.GEMINI_API_KEY
+        ? true
+        : false,
+
+    twelveData:
+      process.env.TWELVEDATA_API_KEY
+        ? true
+        : false,
+
+    oneSignal:
+      process.env.ONESIGNAL_APP_ID
+        ? true
+        : false
+
+  });
+
+});
 
 // =====================================
 // PREÇO REAL FOREX
 // =====================================
 
-app.get("/price/:pair", async (req, res) => {
+app.get("/price/:pair", async (
+  req,
+  res
+) => {
 
   try {
 
-    const pair = req.params.pair;
+    const pair =
+      req.params.pair;
 
-    const price = await getPrice(pair);
+    const price =
+      await getPrice(pair);
+
+    if (!price) {
+
+      return res.status(404).json({
+
+        success: false,
+
+        error:
+          "Preço não encontrado"
+
+      });
+
+    }
 
     res.json({
+
+      success: true,
+
       pair,
+
       price
+
     });
 
   } catch (error) {
 
+    console.log(error);
+
     res.status(500).json({
-      error: error.message
+
+      success: false,
+
+      error:
+        error.message
+
     });
 
   }
 
 });
-
 
 // =====================================
 // CRIAR SINAL
 // =====================================
 
-app.post("/signal", async (req, res) => {
+app.post("/signal", async (
+  req,
+  res
+) => {
 
   try {
 
-    const signal = req.body;
+    const signal =
+      req.body;
 
-    signal.status = "RUNNING";
+    signal.status =
+      "RUNNING";
 
-    signal.createdAt = new Date();
+    signal.createdAt =
+      new Date();
 
-    await db.collection("signals").add(signal);
+    await db
+      .collection("signals")
+      .add(signal);
 
     res.json({
+
       success: true,
+
       signal
+
     });
 
   } catch (error) {
 
+    console.log(error);
+
     res.status(500).json({
-      error: error.message
+
+      success: false,
+
+      error:
+        error.message
+
     });
 
   }
 
 });
 
-
 // =====================================
 // LISTAR SINAIS
 // =====================================
 
-app.get("/signals", async (req, res) => {
+app.get("/signals", async (
+  req,
+  res
+) => {
 
   try {
 
     const snapshot =
-      await db.collection("signals").get();
+      await db
+        .collection("signals")
+        .get();
 
     const signals = [];
 
     snapshot.forEach((doc) => {
 
       signals.push({
+
         id: doc.id,
+
         ...doc.data()
+
       });
 
     });
 
-    res.json(signals);
+    res.json({
+
+      success: true,
+
+      signals
+
+    });
 
   } catch (error) {
 
+    console.log(error);
+
     res.status(500).json({
-      error: error.message
+
+      success: false,
+
+      error:
+        error.message
+
     });
 
   }
 
 });
 
-
 // =====================================
 // ESTATÍSTICAS IA
 // =====================================
 
-app.get("/stats", async (req, res) => {
+app.get("/stats", async (
+  req,
+  res
+) => {
 
   try {
 
     const snapshot =
-      await db.collection("signals").get();
+      await db
+        .collection("signals")
+        .get();
 
     let total = 0;
 
@@ -166,46 +297,47 @@ app.get("/stats", async (req, res) => {
 
     let running = 0;
 
-    let accuracy = 0;
-
     snapshot.forEach((doc) => {
 
-      const signal = doc.data();
+      const signal =
+        doc.data();
 
       total++;
 
-      if(signal.status === "WIN") {
-
+      if (
+        signal.status === "WIN"
+      ) {
         wins++;
-
-        accuracy += 1;
-
       }
 
-      if(signal.status === "LOSS") {
-
+      if (
+        signal.status === "LOSS"
+      ) {
         losses++;
-
-        accuracy -= 1;
-
       }
 
-      if(signal.status === "RUNNING") {
-
+      if (
+        signal.status === "RUNNING"
+      ) {
         running++;
-
       }
 
     });
 
     const winRate =
       total > 0
-      ? ((wins / total) * 100).toFixed(2)
-      : 0;
+        ? (
+            (wins / total) *
+            100
+          ).toFixed(2)
+        : 0;
 
     res.json({
 
-      totalSignals: total,
+      success: true,
+
+      totalSignals:
+        total,
 
       wins,
 
@@ -213,48 +345,96 @@ app.get("/stats", async (req, res) => {
 
       running,
 
-      winRate: `${winRate}%`,
-
-      aiAccuracy: accuracy
+      winRate:
+        `${winRate}%`
 
     });
 
   } catch (error) {
 
+    console.log(error);
+
     res.status(500).json({
-      error: error.message
+
+      success: false,
+
+      error:
+        error.message
+
     });
 
   }
 
 });
+
 // =====================================
-// IA ANALISAR GRÁFICO
+// ANALISAR GRÁFICO
 // =====================================
 
-app.post("/api/analyze", async (req, res) => {
+app.post("/api/analyze", async (
+  req,
+  res
+) => {
 
   try {
 
-    const { image } = req.body;
+    const {
+      image,
+      pair
+    } = req.body;
 
     if (!image) {
 
       return res.status(400).json({
-        error: "Imagem não enviada"
+
+        success: false,
+
+        error:
+          "Imagem não enviada"
+
+      });
+
+    }
+
+    const selectedPair =
+      pair || "EUR/USD";
+
+    // =====================================
+    // CANDLES REAIS
+    // =====================================
+
+    const candles =
+      await getCandles(
+        selectedPair
+      );
+
+    console.log(
+      "Candles:",
+      candles?.length
+    );
+
+    if (
+      !candles ||
+      candles.length === 0
+    ) {
+
+      return res.status(500).json({
+
+        success: false,
+
+        error:
+          "Erro ao buscar candles reais"
+
       });
 
     }
 
     // =====================================
-    // CANDLES REAIS + SMC
+    // SMC ENGINE
     // =====================================
 
-    const candles =
-  await getCandles("EUR/USD");
-
-const smcResult =
-  analyzeSMC(candles);
+    const smcResult =
+      analyzeSMC(candles);
 
     console.log(
       "SMC RESULT:",
@@ -274,24 +454,38 @@ Dados SMC detectados:
 
 ${JSON.stringify(smcResult)}
 
-Analise:
+Par:
+${selectedPair}
+
+Faça análise completa:
 
 - tendência
 - BOS
 - CHOCH
 - suporte/resistência
-- Smart Money Concept
-- Liquidity Sweep
-- Order Blocks
+- liquidity sweep
+- order block
+- fair value gap
 - manipulação institucional
 - momentum
-- probabilidade IA
 - score IA
 - entrada
 - take profit
 - stop loss
 
-Responda profissionalmente.
+Responda SOMENTE em JSON válido.
+
+Formato:
+
+{
+  "pair": "EUR/USD",
+  "decision": "BUY",
+  "entry": "1.09000",
+  "stopLoss": "1.08500",
+  "takeProfit": "1.09500",
+  "score": 87,
+  "analysis": "texto"
+}
 `;
 
     // =====================================
@@ -305,8 +499,12 @@ Responda profissionalmente.
 
         {
           inlineData: {
-            mimeType: "image/png",
+
+            mimeType:
+              "image/png",
+
             data: image
+
           }
         }
 
@@ -318,19 +516,83 @@ Responda profissionalmente.
     const text =
       response.text();
 
+    console.log(
+      "GEMINI RESPONSE:"
+    );
+
+    console.log(text);
+
+    let parsed;
+
+    try {
+
+      parsed =
+        JSON.parse(text);
+
+    } catch {
+
+      parsed = {
+
+        pair:
+          selectedPair,
+
+        decision:
+          smcResult.signal,
+
+        entry:
+          String(
+            smcResult.lastClose
+          ),
+
+        stopLoss:
+          "0.0000",
+
+        takeProfit:
+          "0.0000",
+
+        score:
+          smcResult.score,
+
+        analysis:
+          text
+
+      };
+
+    }
+
+    // =====================================
+    // SALVAR FIREBASE
+    // =====================================
+
+    await db
+      .collection("signals")
+      .add({
+
+        ...parsed,
+
+        smc:
+          smcResult,
+
+        status:
+          "RUNNING",
+
+        createdAt:
+          new Date()
+
+      });
+
+    // =====================================
+    // PUSH NOTIFICATION
+    // =====================================
+
     await sendNotification(
-  "QuantScan BUY Signal 🚀",
 
-  "EUR/USD BUY confirmado com score 87%",
+      `QuantScan ${parsed.decision} 🚀`,
 
-  {
-    pair: "EUR/USD",
-    signal: "BUY",
-    score: 87,
-    tp: "1.09500",
-    sl: "1.08900"
+      `${selectedPair} | Score ${parsed.score}%`
 
-);
+    );
+
     // =====================================
     // RESPOSTA FINAL
     // =====================================
@@ -339,29 +601,61 @@ Responda profissionalmente.
 
       success: true,
 
-      analysis: text,
+      pair:
+        parsed.pair,
 
-      smc: smcResult
+      decision:
+        parsed.decision,
+
+      entry:
+        parsed.entry,
+
+      stopLoss:
+        parsed.stopLoss,
+
+      takeProfit:
+        parsed.takeProfit,
+
+      score:
+        parsed.score,
+
+      analysis:
+        parsed.analysis,
+
+      smc:
+        smcResult
 
     });
 
   } catch (error) {
 
+    console.log(
+      "ERRO ANALYZE:"
+    );
+
     console.log(error);
 
     res.status(500).json({
-      error: error.message
+
+      success: false,
+
+      error:
+        error.message
+
     });
 
   }
 
 });
+
 // =====================================
 // SERVIDOR
 // =====================================
 
-app.listen(process.env.PORT || 3000, () => {
+app.listen(PORT, () => {
 
-  console.log("Servidor online 🚀");
+  console.log(
+    `Servidor online na porta ${PORT}`
+  );
 
 });
