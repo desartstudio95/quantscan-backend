@@ -60,7 +60,7 @@ const model =
   });
 
 console.log(
-  "GEMINI KEY:",
+  "GEMINI:",
   process.env.GEMINI_API_KEY
     ? "OK"
     : "MISSING"
@@ -94,26 +94,20 @@ app.get("/health", (
     status: "ONLINE",
 
     gemini:
-      process.env.GEMINI_API_KEY
-        ? true
-        : false,
+      !!process.env.GEMINI_API_KEY,
 
     twelveData:
-      process.env.TWELVEDATA_API_KEY
-        ? true
-        : false,
+      !!process.env.TWELVEDATA_API_KEY,
 
     oneSignal:
-      process.env.ONESIGNAL_APP_ID
-        ? true
-        : false
+      !!process.env.ONESIGNAL_APP_ID
 
   });
 
 });
 
 // =====================================
-// PREÇO REAL FOREX
+// PREÇO REAL
 // =====================================
 
 app.get("/price/:pair", async (
@@ -170,55 +164,6 @@ app.get("/price/:pair", async (
 });
 
 // =====================================
-// CRIAR SINAL
-// =====================================
-
-app.post("/signal", async (
-  req,
-  res
-) => {
-
-  try {
-
-    const signal =
-      req.body;
-
-    signal.status =
-      "RUNNING";
-
-    signal.createdAt =
-      new Date();
-
-    await db
-      .collection("signals")
-      .add(signal);
-
-    res.json({
-
-      success: true,
-
-      signal
-
-    });
-
-  } catch (error) {
-
-    console.log(error);
-
-    res.status(500).json({
-
-      success: false,
-
-      error:
-        error.message
-
-    });
-
-  }
-
-});
-
-// =====================================
 // LISTAR SINAIS
 // =====================================
 
@@ -232,6 +177,11 @@ app.get("/signals", async (
     const snapshot =
       await db
         .collection("signals")
+        .orderBy(
+          "createdAt",
+          "desc"
+        )
+        .limit(20)
         .get();
 
     const signals = [];
@@ -274,7 +224,7 @@ app.get("/signals", async (
 });
 
 // =====================================
-// ESTATÍSTICAS IA
+// STATS
 // =====================================
 
 app.get("/stats", async (
@@ -290,11 +240,8 @@ app.get("/stats", async (
         .get();
 
     let total = 0;
-
     let wins = 0;
-
     let losses = 0;
-
     let running = 0;
 
     snapshot.forEach((doc) => {
@@ -330,7 +277,7 @@ app.get("/stats", async (
             (wins / total) *
             100
           ).toFixed(2)
-        : 0;
+        : "0";
 
     res.json({
 
@@ -396,8 +343,34 @@ app.post("/api/analyze", async (
 
     }
 
+    // =====================================
+    // PAR
+    // =====================================
+
     const selectedPair =
-      pair || "EUR/USD";
+      pair || "XAU/USD";
+
+    // =====================================
+    // PREÇO REAL
+    // =====================================
+
+    const marketPrice =
+      await getPrice(
+        selectedPair
+      );
+
+    if (!marketPrice) {
+
+      return res.status(500).json({
+
+        success: false,
+
+        error:
+          "Erro ao buscar preço real"
+
+      });
+
+    }
 
     // =====================================
     // CANDLES REAIS
@@ -408,14 +381,9 @@ app.post("/api/analyze", async (
         selectedPair
       );
 
-    console.log(
-      "Candles:",
-      candles?.length
-    );
-
     if (
       !candles ||
-      candles.length === 0
+      candles.length < 5
     ) {
 
       return res.status(500).json({
@@ -423,155 +391,181 @@ app.post("/api/analyze", async (
         success: false,
 
         error:
-          "Erro ao buscar candles reais"
+          "Erro ao buscar candles"
 
       });
 
     }
 
     // =====================================
-    // SMC ENGINE
+    // SMC
     // =====================================
 
     const smcResult =
       analyzeSMC(candles);
 
     console.log(
-      "SMC RESULT:",
+      "SMC:",
       smcResult
     );
 
     // =====================================
-    // PROMPT IA
+    // TP / SL
     // =====================================
 
-    const prompt = `
-Você é QuantScan AI PRO institucional.
+    const price =
+      parseFloat(
+        marketPrice
+      );
 
-Use Smart Money Concepts reais.
+    let stopLoss;
+    let takeProfit;
 
-Dados SMC detectados:
+    if (
+      smcResult.signal ===
+      "BUY"
+    ) {
 
-${JSON.stringify(smcResult)}
+      stopLoss =
+        (price - 15)
+        .toFixed(2);
 
-Par:
-${selectedPair}
+      takeProfit =
+        (price + 30)
+        .toFixed(2);
 
-Faça análise completa:
+    } else {
 
-- tendência
-- BOS
-- CHOCH
-- suporte/resistência
-- liquidity sweep
-- order block
-- fair value gap
-- manipulação institucional
-- momentum
-- score IA
-- entrada
-- take profit
-- stop loss
+      stopLoss =
+        (price + 15)
+        .toFixed(2);
 
-Responda SOMENTE em JSON válido.
+      takeProfit =
+        (price - 30)
+        .toFixed(2);
 
-Formato:
+    }
 
-{
-  "pair": "EUR/USD",
-  "decision": "BUY",
-  "entry": "1.09000",
-  "stopLoss": "1.08500",
-  "takeProfit": "1.09500",
-  "score": 87,
-  "analysis": "texto"
-}
+    // =====================================
+    // ANALYSIS TEXT
+    // =====================================
+
+    let analysis = `
+Smart Money Concept detectado.
+
+Trend: ${smcResult.trend}
+
+BOS: ${smcResult.bos}
+
+CHOCH: ${smcResult.choch}
+
+Liquidity:
+${smcResult.liquiditySweep}
+
+Order Block:
+${smcResult.orderBlock}
+
+FVG:
+${smcResult.fvg}
+
+Score:
+${smcResult.score}
 `;
 
     // =====================================
     // GEMINI
     // =====================================
 
-    const result =
-      await model.generateContent([
-
-        prompt,
-
-        {
-          inlineData: {
-
-            mimeType:
-              "image/png",
-
-            data: image
-
-          }
-        }
-
-      ]);
-
-    const response =
-      await result.response;
-
-    const text =
-      response.text();
-
-    console.log(
-      "GEMINI RESPONSE:"
-    );
-
-    console.log(text);
-
-    let parsed;
-
     try {
 
-      parsed =
-        JSON.parse(text);
+      const result =
+        await model.generateContent([
 
-    } catch {
+          `
+Você é QuantScan AI PRO.
 
-      parsed = {
+Explique esta análise institucional:
 
-        pair:
-          selectedPair,
+${analysis}
+          `,
 
-        decision:
-          smcResult.signal,
+          {
+            inlineData: {
 
-        entry:
-          String(
-            smcResult.lastClose
-          ),
+              mimeType:
+                "image/png",
 
-        stopLoss:
-          "0.0000",
+              data:
+                image
 
-        takeProfit:
-          "0.0000",
+            }
+          }
 
-        score:
-          smcResult.score,
+        ]);
 
-        analysis:
-          text
+      const response =
+        await result.response;
 
-      };
+      const text =
+        response.text();
+
+      if (
+        text &&
+        text.length > 10
+      ) {
+
+        analysis = text;
+
+      }
+
+    } catch (geminiError) {
+
+      console.log(
+        "Gemini fallback ativado"
+      );
 
     }
 
     // =====================================
-    // SALVAR FIREBASE
+    // RESULTADO FINAL
+    // =====================================
+
+    const finalData = {
+
+      success: true,
+
+      pair:
+        selectedPair,
+
+      decision:
+        smcResult.signal,
+
+      entry:
+        price.toFixed(2),
+
+      stopLoss,
+
+      takeProfit,
+
+      score:
+        smcResult.score,
+
+      analysis,
+
+      smc:
+        smcResult
+
+    };
+
+    // =====================================
+    // FIREBASE
     // =====================================
 
     await db
       .collection("signals")
       .add({
 
-        ...parsed,
-
-        smc:
-          smcResult,
+        ...finalData,
 
         status:
           "RUNNING",
@@ -582,50 +576,32 @@ Formato:
       });
 
     // =====================================
-    // PUSH NOTIFICATION
+    // PUSH
     // =====================================
 
-    await sendNotification(
+    try {
 
-      `QuantScan ${parsed.decision} 🚀`,
+      await sendNotification(
 
-      `${selectedPair} | Score ${parsed.score}%`
+        `QuantScan ${smcResult.signal} 🚀`,
 
-    );
+        `${selectedPair} | Score ${smcResult.score}%`
+
+      );
+
+    } catch (pushError) {
+
+      console.log(
+        "Erro push"
+      );
+
+    }
 
     // =====================================
-    // RESPOSTA FINAL
+    // RESPONSE
     // =====================================
 
-    res.json({
-
-      success: true,
-
-      pair:
-        parsed.pair,
-
-      decision:
-        parsed.decision,
-
-      entry:
-        parsed.entry,
-
-      stopLoss:
-        parsed.stopLoss,
-
-      takeProfit:
-        parsed.takeProfit,
-
-      score:
-        parsed.score,
-
-      analysis:
-        parsed.analysis,
-
-      smc:
-        smcResult
-
-    });
+    res.json(finalData);
 
   } catch (error) {
 
@@ -649,7 +625,7 @@ Formato:
 });
 
 // =====================================
-// SERVIDOR
+// SERVER
 // =====================================
 
 app.listen(PORT, () => {
